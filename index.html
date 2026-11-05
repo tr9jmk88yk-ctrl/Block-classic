@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#071014">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Block Classic">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Block Classic</title>
+<style>
+:root{color-scheme:dark;--bg:#071014;--panel:#101b20;--line:#30434a;--lime:#d2e8a0;--muted:#9aafb2}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f3f7ed;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overscroll-behavior:none}
+main{max-width:520px;margin:auto;padding:calc(env(safe-area-inset-top) + 14px) 12px calc(env(safe-area-inset-bottom) + 18px);display:flex;flex-direction:column;gap:12px}
+header{display:flex;justify-content:space-between;align-items:center}.eyebrow{font-size:10px;letter-spacing:3px;color:#b4d77c}.brand{font-size:24px;font-weight:900;letter-spacing:2px}.player{text-align:right;color:var(--lime);font-size:10px;line-height:1.6}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:8px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px}.board-wrap{padding:4px;position:relative;background:#071014;display:flex;justify-content:center;align-items:flex-start;min-width:0}
+#board{width:100%;max-width:300px;height:auto;image-rendering:pixelated;display:block}.side{display:flex;flex-direction:column;gap:8px;min-width:0}.small{font-size:9px;letter-spacing:1px;color:var(--muted)}.number{font-size:18px;font-weight:900;margin-top:4px}#next{width:100%;height:auto;display:block}
+button{font:inherit;border:0;cursor:pointer;touch-action:manipulation}.action{background:var(--lime);color:#18251c;border-radius:9px;padding:12px 8px;font-weight:900;font-size:11px}.subbutton{background:#263940;color:white;border-radius:9px;padding:10px 5px;font-size:10px}
+.controls{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.ctrl{background:#263940;border:1px solid #49616a;border-radius:12px;height:58px;color:white;font-size:23px;font-weight:900}.ctrl:active,.subbutton:active{background:#49616a}
+.overlay{position:absolute;inset:4px;background:#071014ed;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px}.overlay h1{font-size:30px;color:var(--lime);margin:0}.overlay p{font-size:11px;color:#a8b9b6;margin:12px 0 20px}
+footer{text-align:center;color:#789096;font-size:9px;letter-spacing:2px}
+@media(max-width:360px){.layout{grid-template-columns:minmax(0,1fr) 76px}.brand{font-size:20px}.panel{padding:7px}.ctrl{height:52px}}
+</style>
+</head>
+<body>
+<main>
+<header><div><div class="eyebrow">RETRO ARCADE</div><div class="brand">BLOCK CLASSIC</div></div><div class="player">PLAYER 1<br>1989 EDITION</div></header>
+<section class="layout">
+ <div class="panel board-wrap"><canvas id="board" width="300" height="600" aria-label="Tabuleiro do jogo"></canvas><div class="overlay" id="overlay"><div><h1 id="ovTitle">TETRIS</h1><p id="ovText">READY PLAYER 1</p><button class="action" id="ovButton">START GAME ▶</button></div></div></div>
+ <aside class="side">
+  <div class="panel"><div class="small">SCORE</div><div class="number" id="score">000000</div></div>
+  <div class="panel"><div class="small">BEST</div><div class="number" id="best">000000</div></div>
+  <div class="panel"><div class="small">NEXT</div><canvas id="next" width="100" height="100"></canvas></div>
+  <div class="panel"><div class="small">LINES</div><div class="number" id="lines">0</div><div class="small" style="margin-top:9px">LEVEL</div><div class="number" id="level">1</div></div>
+  <button class="action" id="pause">Ⅱ PAUSE</button><button class="subbutton" id="restart">↻ RESTART</button>
+ </aside>
+</section>
+<section class="panel"><div class="small" style="margin-bottom:10px">CONTROLS · TOUCH TO PLAY</div><div class="controls">
+<button class="ctrl" data-act="left" aria-label="Esquerda">◀</button><button class="ctrl" data-act="rotate" aria-label="Rodar">↻</button><button class="ctrl" data-act="right" aria-label="Direita">▶</button><button class="ctrl" data-act="drop" aria-label="Queda instantânea">▼</button>
+</div><div class="small" style="text-align:center;margin-top:10px">MOVE · ROTATE · MOVE · HARD DROP</div></section>
+<footer>BLOCK CLASSIC · INSERT COIN · PLAY FOREVER</footer>
+</main>
+<script>
+(()=>{
+const $=id=>document.getElementById(id),canvas=$('board'),ctx=canvas.getContext('2d'),nc=$('next').getContext('2d');
+const W=10,H=20,S=30,C=['#55d5c2','#e8d36c','#b78ce8','#77bd75','#e87979','#719cdd','#e6a05e'];
+const SH=[[[1,1,1,1]],[[1,1],[1,1]],[[0,1,0],[1,1,1]],[[0,1,1],[1,1,0]],[[1,1,0],[0,1,1]],[[1,0,0],[1,1,1]],[[0,0,1],[1,1,1]]];
+let grid,piece,next,score=0,lines=0,level=1,running=false,paused=false,timer=null,best=0;
+try{best=Number(localStorage.getItem('blockClassicBest'))||0}catch(e){}
+$('best').textContent=String(best).padStart(6,'0');
+const clone=a=>a.map(r=>r.slice()),randomPiece=()=>{let i=Math.floor(Math.random()*7);return{shape:clone(SH[i]),color:C[i]}};
+function update(){ $('score').textContent=String(score).padStart(6,'0');$('lines').textContent=lines;$('level').textContent=level;if(score>best){best=score;$('best').textContent=String(best).padStart(6,'0');try{localStorage.setItem('blockClassicBest',best)}catch(e){}}}
+function collides(q){for(let y=0;y<q.shape.length;y++)for(let x=0;x<q.shape[y].length;x++)if(q.shape[y][x]){let xx=q.x+x,yy=q.y+y;if(xx<0||xx>=W||yy>=H||(yy>=0&&grid[yy][xx]))return true}return false}
+function spawn(){piece=next;piece.x=3;piece.y=0;next=randomPiece();drawNext();if(collides(piece)){running=false;clearInterval(timer);showOverlay('GAME OVER','SCORE '+score,'PLAY AGAIN ↻')}}
+function merge(){piece.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v&&piece.y+y>=0)grid[piece.y+y][piece.x+x]=piece.color}));let count=0;for(let y=H-1;y>=0;y--)if(grid[y].every(Boolean)){grid.splice(y,1);grid.unshift(Array(W).fill(null));count++;y++}if(count){lines+=count;score+=[0,100,300,500,800][count]*level;level=Math.floor(lines/10)+1;update()}spawn()}
+function drawCell(x,y,color){ctx.fillStyle=color;ctx.fillRect(x*S+1,y*S+1,S-2,S-2);ctx.fillStyle='#ffffff30';ctx.fillRect(x*S+3,y*S+3,S-6,3);ctx.fillStyle='#00000025';ctx.fillRect(x*S+3,y*S+S-5,S-6,2)}
+function draw(){ctx.fillStyle='#071014';ctx.fillRect(0,0,300,600);ctx.strokeStyle='#17272b';ctx.lineWidth=1;for(let x=0;x<=W;x++){ctx.beginPath();ctx.moveTo(x*S,0);ctx.lineTo(x*S,600);ctx.stroke()}for(let y=0;y<=H;y++){ctx.beginPath();ctx.moveTo(0,y*S);ctx.lineTo(300,y*S);ctx.stroke()}grid.forEach((r,y)=>r.forEach((v,x)=>{if(v)drawCell(x,y,v)}));if(piece){let gy=piece.y;while(!collides({...piece,y:gy+1}))gy++;piece.shape.forEach((r,y)=>r.forEach((v,x)=>{if(v){ctx.globalAlpha=.2;drawCell(piece.x+x,gy+y,piece.color);ctx.globalAlpha=1;drawCell(piece.x+x,piece.y+y,piece.color)}}))}}
+function drawNext(){nc.fillStyle='#101b20';nc.fillRect(0,0,100,100);let sh=next.shape,z=20,ox=(100-sh[0].length*z)/2,oy=(100-sh.length*z)/2;sh.forEach((r,y)=>r.forEach((v,x)=>{if(v){nc.fillStyle=next.color;nc.fillRect(ox+x*z+1,oy+y*z+1,z-2,z-2);nc.fillStyle='#ffffff30';nc.fillRect(ox+x*z+3,oy+y*z+3,z-6,3)}}))}
+function showOverlay(title,sub,button){$('ovTitle').textContent=title;$('ovText').textContent=sub;$('ovButton').textContent=button;$('overlay').style.display='flex';$('ovButton').onclick=()=>{if(paused){paused=false;$('pause').textContent='Ⅱ PAUSE';$('overlay').style.display='none';draw()}else start()}}
+function start(){clearInterval(timer);grid=Array.from({length:H},()=>Array(W).fill(null));score=0;lines=0;level=1;piece=randomPiece();next=randomPiece();running=true;paused=false;$('pause').textContent='Ⅱ PAUSE';$('overlay').style.display='none';update();spawn();draw();schedule()}
+function schedule(){clearInterval(timer);timer=setInterval(()=>{if(running&&!paused)stepDown()},Math.max(90,800-(level-1)*65))}
+function stepDown(){if(!running||paused)return;if(!collides({...piece,y:piece.y+1}))piece.y++;else merge();draw()}
+function move(dx){if(!running||paused)return;let q={...piece,x:piece.x+dx};if(!collides(q))piece.x+=dx;draw()}
+function rotate(){if(!running||paused)return;let shape=piece.shape[0].map((_,i)=>piece.shape.map(r=>r[i]).reverse()),q={...piece,shape};for(let dx of [0,-1,1,-2,2]){q.x=piece.x+dx;if(!collides(q)){piece=q;break}}draw()}
+function hardDrop(){if(!running||paused)return;let n=0;while(!collides({...piece,y:piece.y+1})){piece.y++;n++}score+=2*n;merge();update();draw()}
+function togglePause(){if(!running)return;paused=!paused;$('pause').textContent=paused?'▶ RESUME':'Ⅱ PAUSE';if(paused)showOverlay('PAUSED','TAKE A BREATHER','RESUME ▶');else{$('overlay').style.display='none';draw()}}
+$('pause').addEventListener('click',togglePause);$('restart').addEventListener('click',start);$('ovButton').addEventListener('click',start);
+document.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('pointerdown',e=>{e.preventDefault();let a=b.dataset.act;if(a==='left')move(-1);if(a==='right')move(1);if(a==='rotate')rotate();if(a==='drop')hardDrop()}));
+document.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowDown','ArrowUp',' '].includes(e.key))e.preventDefault();if(e.key==='ArrowLeft')move(-1);if(e.key==='ArrowRight')move(1);if(e.key==='ArrowUp')rotate();if(e.key==='ArrowDown')stepDown();if(e.key===' ')hardDrop();if(e.key==='Escape')togglePause()});
+grid=Array.from({length:H},()=>Array(W).fill(null));next=randomPiece();draw();drawNext();
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+})();
+</script>
+</body></html>
