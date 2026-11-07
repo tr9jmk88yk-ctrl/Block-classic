@@ -182,14 +182,11 @@ function merge(){
  }else{sfx('lock');spawn();draw()}
 }
 function drawCell(x,y,color){
+ // Visual original das peças: blocos simples, lisos e com brilho discreto.
  const px=x*S,py=y*S;
- // Bloco pixel-art: contorno escuro, bisel claro e pequeno brilho quadrado.
- ctx.fillStyle='#02080b';ctx.fillRect(px+1,py+1,S-2,S-2);
- ctx.fillStyle=color;ctx.fillRect(px+3,py+3,S-6,S-6);
- ctx.fillStyle='#ffffff55';ctx.fillRect(px+3,py+3,S-6,3);ctx.fillRect(px+3,py+3,3,S-6);
- ctx.fillStyle='#00000045';ctx.fillRect(px+3,py+S-6,S-6,3);ctx.fillRect(px+S-6,py+3,3,S-6);
- ctx.fillStyle='#ffffff30';ctx.fillRect(px+7,py+7,5,3);ctx.fillRect(px+7,py+7,3,5);
- ctx.fillStyle='#00000020';ctx.fillRect(px+13,py+13,10,10);
+ ctx.fillStyle=color;ctx.fillRect(px+1,py+1,S-2,S-2);
+ ctx.fillStyle='#ffffff30';ctx.fillRect(px+3,py+3,S-6,3);
+ ctx.fillStyle='#00000025';ctx.fillRect(px+3,py+S-5,S-6,2);
 }
 function draw(){
  ctx.fillStyle='#071014';ctx.fillRect(0,0,300,600);
