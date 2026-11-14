@@ -45,9 +45,6 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 #overlay button{margin-top:6px;border:0;border-radius:14px;background:var(--accent);color:#0b1020;
   font-size:18px;font-weight:600;padding:13px 34px}
 #overlay button:active{filter:brightness(.88)}
-#controls{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
-.btn{height:62px;border:0;border-radius:16px;background:var(--panel);color:var(--text);font-size:26px;touch-action:none}
-.btn:active,.btn.on{background:var(--panel-press)}
 .hidden{display:none!important}
 </style>
 </head>
@@ -70,18 +67,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
       <canvas id="board"></canvas>
       <div id="overlay">
         <h1 id="ovTitle">Blocos</h1>
-        <p id="ovText">Encaixa as peças e completa linhas.</p>
+        <p id="ovText">Arrasta de lado: mover<br>Toca: rodar<br>Arrasta para baixo: descer<br>Desliza depressa para baixo: largar</p>
         <button id="ovBtn">Jogar</button>
       </div>
     </div>
-  </div>
-
-  <div id="controls">
-    <button class="btn" id="bLeft"  aria-label="Esquerda">◀</button>
-    <button class="btn" id="bDown"  aria-label="Descer">▼</button>
-    <button class="btn" id="bRight" aria-label="Direita">▶</button>
-    <button class="btn" id="bRot"   aria-label="Rodar">⟳</button>
-    <button class="btn" id="bDrop"  aria-label="Largar">⤓</button>
   </div>
 </div>
 
@@ -196,17 +185,31 @@ const sfx = {
   settle() { tone(300, 0.35, {type:'triangle', vol:0.09, to:110}); tone(90, 0.2, {type:'sine', vol:0.16, to:50, delay:0.28}); }
 };
 
-/* ---------- Música (tema original, em loop) ---------- */
+/* ---------- Música (tema original de ambiente lunar, em loop) ---------- */
 let musicOn = true;
 try { musicOn = localStorage.getItem('blocos-music') !== '0'; } catch (e) {}
-// semitons a partir de lá4 (0); null = pausa. 8 compassos de 8 colcheias, em lá menor
+// semitons a partir de lá4 (0). Cada acorde: [baixo, [4 notas do arpejo]]. 16 compassos de 8 colcheias, em mi menor
+const _ = null;
+const CH = {
+  Em:[-17, [-5, -2, 2, 7]],
+  C: [-21, [-9, -5, -2, 3]],
+  G: [-14, [-2, 2, 5, 10]],
+  D: [-19, [-7, -3, 0, 5]],
+  Am:[-24, [0, 3, 7, 12]],
+  B: [-22, [-10, -6, -3, 2]]
+};
+const PROG = ['Em','C','G','D','Em','C','Am','B',  'Am','Em','C','D','Am','B','Em','Em'];
+const ARP = [0, 1, 2, 3, 2, 1, 2, 1];
 const MEL = [
-  0,3,7,3,0,3,7,12,    10,7,5,7,3,null,null,null,
-  8,5,0,5,8,7,5,3,     2,null,5,null,7,null,null,null,
-  7,10,12,10,7,5,3,5,  7,null,3,null,0,null,null,null,
-  5,8,12,8,5,3,2,3,    7,null,null,null,null,null,2,3
+  7,_,9,_,10,_,9,7,     7,_,_,5,3,_,_,_,
+  5,_,10,_,14,_,12,10,  9,_,_,_,12,_,9,_,
+  10,_,9,_,7,_,2,_,     3,_,7,_,10,_,7,_,
+  12,_,10,_,7,_,3,_,    9,_,_,6,_,2,_,_,
+  12,_,12,10,7,_,10,_,  9,_,7,_,2,_,7,9,
+  10,_,7,_,3,_,5,7,     9,_,5,_,9,_,12,14,
+  15,_,12,_,10,_,7,_,   14,_,9,_,6,_,9,_,
+  7,_,10,_,14,_,12,10,  9,_,7,_,_,_,_,_
 ];
-const BASS = [-24, -21, -19, -17, -24, -24, -19, -17];
 const nf = n => 440 * Math.pow(2, n / 12);
 let mStep = 0, mNext = 0, mTimer = 0;
 
@@ -219,14 +222,17 @@ function mNote(n, dur, type, vol, t) {
   osc.connect(g); g.connect(musicGain);
   osc.start(t); osc.stop(t + dur + 0.03);
 }
-const stepLen = () => 0.19 * Math.max(0.7, 1 - (level - 1) * 0.03);   // acelera com o nível
+const stepLen = () => 0.23 * Math.max(0.7, 1 - (level - 1) * 0.03);   // acelera com o nível
 function musicTick() {
   if (!actx || !musicGain) return;
   while (mNext < actx.currentTime + 0.25) {
     const bar = (mStep / 8) | 0, k = mStep % 8, len = stepLen();
-    const m = MEL[mStep];
-    if (m !== null) mNote(m, len * 1.7, 'square', 0.03, mNext);
-    if (k % 2 === 0) mNote(BASS[bar] + (k % 4 === 2 ? 12 : 0), len * 1.6, 'triangle', 0.09, mNext);
+    const [root, arp] = CH[PROG[bar]];
+    const m = MEL[mStep], nxt = MEL[(mStep + 1) % MEL.length];
+    if (m !== null) mNote(m, len * (nxt === null ? 2.4 : 1.15), 'triangle', 0.075, mNext);   // melodia
+    mNote(arp[ARP[k]], len * 0.95, 'square', 0.016, mNext);                                   // arpejo
+    if (k === 0) mNote(root, len * 3.6, 'triangle', 0.1, mNext);                              // baixo
+    if (k === 4) mNote(root + 7, len * 3, 'triangle', 0.07, mNext);
     mNext += len; mStep = (mStep + 1) % MEL.length;
   }
 }
@@ -621,7 +627,7 @@ window.addEventListener('orientationchange', () => setTimeout(resize, 150));
 /* ---------- Pausa ---------- */
 function pause() {
   if (!isActive()) return;
-  pausedFrom = state; state = 'paused'; softDown = false;
+  pausedFrom = state; state = 'paused'; softDown = false; tp = null;
   showOverlay('Pausa', 'O jogo está parado.', 'Continuar');
 }
 function resume() {
@@ -651,25 +657,40 @@ $('musicBtn').addEventListener('click', () => {
 });
 paintMusic();
 
-/* ---------- Controlos ---------- */
-function bindHold(btn, fn, repeat) {
-  let t1 = 0, t2 = 0;
-  const stop = () => { clearTimeout(t1); clearInterval(t2); };
-  btn.addEventListener('pointerdown', e => {
-    e.preventDefault(); initAudio(); fn();
-    if (repeat) t1 = setTimeout(() => { t2 = setInterval(fn, 55); }, 170);
-  });
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => btn.addEventListener(ev, stop));
+/* ---------- Controlos por toque (toda a área de jogo) ----------
+   arrastar de lado = mover · tocar = rodar · arrastar para baixo = descer
+   deslizar depressa para baixo = largar · segundo dedo a tocar = rodar */
+const pad = $('mid');
+let tp = null;
+pad.addEventListener('pointerdown', e => {
+  if (!overlay.classList.contains('hidden')) return;           // menus: deixa os botões funcionar
+  e.preventDefault(); initAudio();
+  if (tp && pad.hasPointerCapture && pad.hasPointerCapture(tp.id)) { rotate(); return; }
+  tp = {id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(), ax: e.clientX, moved: false};
+  try { pad.setPointerCapture(e.pointerId); } catch (_e) {}
+});
+pad.addEventListener('pointermove', e => {
+  if (!tp || e.pointerId !== tp.id) return;
+  const stepPx = cell * 0.9;
+  const dx = e.clientX - tp.x0, dy = e.clientY - tp.y0;
+  while (e.clientX - tp.ax >= stepPx) { move(1);  tp.ax += stepPx; tp.moved = true; }
+  while (tp.ax - e.clientX >= stepPx) { move(-1); tp.ax -= stepPx; tp.moved = true; }
+  if (Math.abs(dx) > 10 || Math.abs(dy) > 10) tp.moved = true;
+  softDown = dy > stepPx && dy > Math.abs(dx);                  // arrastar para baixo = descer
+});
+function endTouch(e) {
+  if (!tp || e.pointerId !== tp.id) return;
+  const dt = Math.max(1, performance.now() - tp.t0);
+  const dx = e.clientX - tp.x0, dy = e.clientY - tp.y0;
+  softDown = false;
+  if (e.type === 'pointerup') {
+    if (!tp.moved && dt < 300) rotate();
+    else if (dy > cell * 2 && dy / dt > 0.7 && Math.abs(dx) < dy * 0.6) hardDrop();
+  }
+  tp = null;
 }
-bindHold($('bLeft'),  () => move(-1), true);
-bindHold($('bRight'), () => move(1), true);
-bindHold($('bRot'),   rotate, false);
-bindHold($('bDrop'),  hardDrop, false);
-
-const bDown = $('bDown');
-bDown.addEventListener('pointerdown', e => { e.preventDefault(); initAudio(); softDown = true; bDown.classList.add('on'); });
-['pointerup', 'pointercancel', 'pointerleave'].forEach(ev =>
-  bDown.addEventListener(ev, () => { softDown = false; bDown.classList.remove('on'); }));
+pad.addEventListener('pointerup', endTouch);
+pad.addEventListener('pointercancel', endTouch);
 
 // teclado (para testar no computador)
 document.addEventListener('keydown', e => {
