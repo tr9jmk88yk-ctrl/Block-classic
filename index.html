@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#11131f">
+<meta name="apple-mobile-web-app-title" content="Blocos">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Blocos</title>
 <style>
 :root{
@@ -45,6 +48,8 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
 #overlay button{margin-top:6px;border:0;border-radius:14px;background:var(--accent);color:#0b1020;
   font-size:18px;font-weight:600;padding:13px 34px}
 #overlay button:active{filter:brightness(.88)}
+#overlay.over{background:rgba(11,13,23,.4);justify-content:flex-end;padding-bottom:16%}
+#overlay.over h1{display:none}
 .hidden{display:none!important}
 </style>
 </head>
@@ -113,7 +118,8 @@ let score, lines, level, state = 'ready', pausedFrom = 'play';
 let dropAcc, lockT, resets, softDown = false;
 let clearRows = [], clearT = 0, clearDur = CLEAR_MS;
 let blastCells = [], blastT = 0, settleT = 0, sinceBlaster = 0, alertT = 0, uiT = 0;
-const parts = [];
+const parts = [], pops = [];
+let pendingBlast = null, ownCells = [];
 let best = 0;
 try { best = parseInt(localStorage.getItem('blocos-best') || '0', 10) || 0; } catch (e) {}
 
@@ -182,33 +188,32 @@ const sfx = {
     tone(520, 0.5, {type:'sawtooth', vol:0.08, to:40});
     [1568, 2093, 2637].forEach((f, i) => tone(f, 0.18, {type:'triangle', vol:0.05, delay:0.08 + i * 0.07}));
   },
-  settle() { tone(300, 0.35, {type:'triangle', vol:0.09, to:110}); tone(90, 0.2, {type:'sine', vol:0.16, to:50, delay:0.28}); }
+  settle() { tone(300, 0.35, {type:'triangle', vol:0.09, to:110}); tone(90, 0.2, {type:'sine', vol:0.16, to:50, delay:0.28}); },
+  master() { [523, 659, 784, 1047, 1319, 1568, 2093].forEach((f, i) => tone(f, 0.22, {type:'square', vol:0.045, delay:0.1 + i * 0.06})); noise(0.35, 0.12, 6000, 800, 0.1); }
 };
 
-/* ---------- Música (tema original de ambiente lunar, em loop) ---------- */
+/* ---------- Música (tema original, estilo dança folk, em loop) ---------- */
 let musicOn = true;
 try { musicOn = localStorage.getItem('blocos-music') !== '0'; } catch (e) {}
-// semitons a partir de lá4 (0). Cada acorde: [baixo, [4 notas do arpejo]]. 16 compassos de 8 colcheias, em mi menor
+// semitons a partir de lá4 (0). Cada acorde: [baixo, [4 notas]]. 16 compassos de 8 colcheias, em ré menor
 const _ = null;
 const CH = {
-  Em:[-17, [-5, -2, 2, 7]],
-  C: [-21, [-9, -5, -2, 3]],
-  G: [-14, [-2, 2, 5, 10]],
-  D: [-19, [-7, -3, 0, 5]],
-  Am:[-24, [0, 3, 7, 12]],
-  B: [-22, [-10, -6, -3, 2]]
+  Dm:[-19, [-7, -4, 0, 5]],
+  Gm:[-14, [-2, 1, 5, 8]],
+  A7:[-24, [0, 4, 7, 10]],
+  Bb:[-23, [1, 5, 8, 13]],
+  F: [-16, [-4, 0, 3, 8]]
 };
-const PROG = ['Em','C','G','D','Em','C','Am','B',  'Am','Em','C','D','Am','B','Em','Em'];
-const ARP = [0, 1, 2, 3, 2, 1, 2, 1];
+const PROG = ['Dm','Dm','Gm','Dm','Bb','F','A7','Dm',  'Gm','Dm','A7','Dm','Bb','Gm','A7','Dm'];
 const MEL = [
-  7,_,9,_,10,_,9,7,     7,_,_,5,3,_,_,_,
-  5,_,10,_,14,_,12,10,  9,_,_,_,12,_,9,_,
-  10,_,9,_,7,_,2,_,     3,_,7,_,10,_,7,_,
-  12,_,10,_,7,_,3,_,    9,_,_,6,_,2,_,_,
-  12,_,12,10,7,_,10,_,  9,_,7,_,2,_,7,9,
-  10,_,7,_,3,_,5,7,     9,_,5,_,9,_,12,14,
-  15,_,12,_,10,_,7,_,   14,_,9,_,6,_,9,_,
-  7,_,10,_,14,_,12,10,  9,_,7,_,_,_,_,_
+  5,5,12,_,10,8,7,5,      8,_,5,_,0,_,_,_,
+  10,10,13,_,12,10,8,10,  8,_,5,_,_,_,0,5,
+  13,_,12,10,8,_,10,_,    8,_,10,8,3,_,_,8,
+  12,_,7,_,4,_,7,10,      5,_,0,_,5,_,_,_,
+  13,13,15,_,13,12,10,_,  12,_,8,_,12,_,17,_,
+  16,_,12,_,10,_,7,_,     5,7,8,_,7,5,_,_,
+  13,_,13,12,10,_,8,_,    10,_,13,_,17,_,15,13,
+  12,_,16,_,12,_,7,10,    5,_,_,_,0,_,_,_
 ];
 const nf = n => 440 * Math.pow(2, n / 12);
 let mStep = 0, mNext = 0, mTimer = 0;
@@ -222,17 +227,24 @@ function mNote(n, dur, type, vol, t) {
   osc.connect(g); g.connect(musicGain);
   osc.start(t); osc.stop(t + dur + 0.03);
 }
-const stepLen = () => 0.23 * Math.max(0.7, 1 - (level - 1) * 0.03);   // acelera com o nível
+const stepLen = () => 0.155 * Math.max(0.7, 1 - (level - 1) * 0.03);  // acelera com o nível
 function musicTick() {
   if (!actx || !musicGain) return;
   while (mNext < actx.currentTime + 0.25) {
     const bar = (mStep / 8) | 0, k = mStep % 8, len = stepLen();
     const [root, arp] = CH[PROG[bar]];
     const m = MEL[mStep], nxt = MEL[(mStep + 1) % MEL.length];
-    if (m !== null) mNote(m, len * (nxt === null ? 2.4 : 1.15), 'triangle', 0.075, mNext);   // melodia
-    mNote(arp[ARP[k]], len * 0.95, 'square', 0.016, mNext);                                   // arpejo
-    if (k === 0) mNote(root, len * 3.6, 'triangle', 0.1, mNext);                              // baixo
-    if (k === 4) mNote(root + 7, len * 3, 'triangle', 0.07, mNext);
+    if (m !== null) {                                                       // melodia
+      const d = len * (nxt === null ? 1.7 : 0.85);
+      mNote(m, d, 'square', 0.04, mNext);
+      mNote(m, d, 'triangle', 0.05, mNext);
+    }
+    if (k === 0) mNote(root, len * 1.8, 'triangle', 0.1, mNext);            // baixo "oom"
+    if (k === 4) mNote(root + 7, len * 1.8, 'triangle', 0.08, mNext);
+    if (k === 2 || k === 6) {                                               // acordes "pah"
+      mNote(arp[1], len * 0.55, 'square', 0.02, mNext);
+      mNote(arp[3], len * 0.55, 'square', 0.02, mNext);
+    }
     mNext += len; mStep = (mStep + 1) % MEL.length;
   }
 }
@@ -258,6 +270,7 @@ function syncMusic() {
 
 /* ---------- Utilitários ---------- */
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const linePoints = n => n <= 4 ? POINTS[n] : 800 + (n - 4) * 400;
 const isActive = () => state === 'play' || state === 'clearing' || state === 'blasting' || state === 'settling';
 const rotCW = m => m[0].map((_, i) => m.map(r => r[i]).reverse());
 const emptyRow = () => Array(COLS).fill(null);
@@ -282,7 +295,7 @@ function newGame() {
   off = Array(ROWS).fill(0);
   coff = Array.from({length: ROWS}, () => Array(COLS).fill(0));
   bag = []; nextT = nextType();
-  nextSpecial = false; sinceBlaster = 0; blastCells = []; parts.length = 0;
+  nextSpecial = false; sinceBlaster = 0; blastCells = []; parts.length = 0; pops.length = 0; pendingBlast = null; ownCells = [];
   score = 0; lines = 0; level = 1;
   clearRows = []; softDown = false;
   updateHud();
@@ -309,16 +322,17 @@ function spawn() {
   if (collidesAt(cur.m, cur.x, cur.y)) gameOver();
 }
 function gameOver() {
-  state = 'over'; cur = null; softDown = false;
+  state = 'over'; cur = null; softDown = false; pendingBlast = null;
   sfx.over();
   if (score > best) { best = score; try { localStorage.setItem('blocos-best', String(best)); } catch (e) {} }
-  showOverlay('Fim de jogo', 'Pontos: ' + score + '\nRecorde: ' + best, 'Jogar de novo');
+  showOverlay('Fim de jogo', 'Pontos: ' + score + '\nRecorde: ' + best, 'Jogar de novo', true);
 }
-function showOverlay(title, text, btn) {
+function showOverlay(title, text, btn, over) {
   $('ovTitle').textContent = title;
   $('ovText').style.whiteSpace = 'pre-line';
   $('ovText').textContent = text;
   $('ovBtn').textContent = btn;
+  overlay.classList.toggle('over', !!over);
   overlay.classList.remove('hidden');
 }
 function updateHud() {
@@ -358,14 +372,15 @@ function ghostY() {
 
 function lock(quiet) {
   let overTop = false;
+  const placed = [];
   for (let r = 0; r < cur.m.length; r++) for (let c = 0; c < cur.m[r].length; c++) {
     if (!cur.m[r][c]) continue;
     const y = cur.y + r, x = cur.x + c;
-    if (y < 0) overTop = true; else grid[y][x] = COLORS[cur.type];
+    if (y < 0) overTop = true; else { grid[y][x] = COLORS[cur.type]; placed.push([x, y]); }
   }
   if (overTop) { if (!quiet) sfx.lock(); gameOver(); return; }
-  if (cur.special) { startBlast(COLORS[cur.type]); return; }
-  if (!quiet) sfx.lock();
+  if (cur.special) { pendingBlast = COLORS[cur.type]; ownCells = placed; }   // primeiro as linhas, depois rebenta a cor
+  else if (!quiet) sfx.lock();
   resolveLines();
 }
 function resolveLines() {
@@ -373,11 +388,12 @@ function resolveLines() {
   for (let y = 0; y < ROWS; y++) if (grid[y].every(Boolean)) full.push(y);
   cur = null;
 
-  if (!full.length) { spawn(); return; }
+  if (!full.length) { afterLines(); return; }
 
   const oldLevel = level;
   lines += full.length;
-  score += POINTS[full.length] * level;
+  const pts = linePoints(full.length) * level;
+  score += pts;
   level = Math.floor(lines / 10) + 1;
   updateHud();
   clearRows = full; clearT = 0;
@@ -385,11 +401,27 @@ function resolveLines() {
   state = 'clearing';
   sfx.clear(full.length);
   if (level > oldLevel) sfx.level();
+
+  // pontos a saltar e classificação, com as letras de arcade
+  const midY = full.reduce((a, b) => a + b, 0) / full.length + 0.5;
+  pops.push({kind: 'score', text: '+' + pts, cx: COLS / 2, cy: midY, t: 0, dur: 1100});
+  const rating = full.length > 4 ? 'MASTER' : full.length === 4 ? 'EXCELLENT' : full.length === 3 ? 'GOOD' : '';
+  if (rating) pops.push({kind: 'rating', text: rating, cy: clamp(midY - 3, 3, ROWS - 4), t: 0, dur: 1600});
+  if (full.length > 4) sfx.master();
+}
+function afterLines() {
+  if (pendingBlast) { const c = pendingBlast; pendingBlast = null; startBlast(c); return; }
+  spawn();
 }
 function startBlast(color) {
   cur = null; softDown = false;
   blastCells = [];
   for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (grid[y][x] === color) blastCells.push([x, y, color]);
+  // sem mais blocos dessa cor para rebentar: a peça fica no sítio, como uma peça normal
+  const others = blastCells.filter(b => !ownCells.some(o => o[0] === b[0] && o[1] === b[1])).length;
+  const had = blastCells.length;
+  ownCells = [];
+  if (!others) { blastCells = []; state = 'play'; if (had) sfx.lock(); spawn(); return; }
   blastT = 0; state = 'blasting';
   for (const [x, y] of blastCells) for (let i = 0; i < 3; i++) {
     const a = Math.random() * Math.PI * 2, sp = 2 + Math.random() * 5;
@@ -399,9 +431,11 @@ function startBlast(color) {
 }
 function finishBlast() {
   const n = blastCells.length;
+  const bx = blastCells.reduce((a, b) => a + b[0], 0) / n + 0.5, by = blastCells.reduce((a, b) => a + b[1], 0) / n + 0.5;
   for (const [x, y] of blastCells) grid[y][x] = null;
   blastCells = [];
   score += n * BLAST_POINTS * level; updateHud();
+  pops.push({kind: 'score', text: '+' + n * BLAST_POINTS * level, cx: bx, cy: by, t: 0, dur: 1100});
   // o que sobra cai em cada coluna e alinha-se no fundo
   off.fill(0);
   for (let x = 0; x < COLS; x++) {
@@ -431,9 +465,10 @@ function finishClear() {
     newOff.unshift(off[y] + below);   // linhas de cima começam na posição antiga e deslizam
   }
   while (newGrid.length < ROWS) { newGrid.unshift(emptyRow()); newOff.unshift(0); }
+  ownCells = ownCells.filter(([, y]) => !gone.has(y)).map(([x, y]) => [x, y + clearRows.filter(g => g > y).length]);
   grid = newGrid; off = newOff; clearRows = [];
   state = 'play';
-  spawn();
+  afterLines();
 }
 
 /* ---------- Ciclo ---------- */
@@ -445,10 +480,16 @@ function step(dt) {
     if (coff) for (let x = 0; x < COLS; x++) if (coff[y][x] > 0) { coff[y][x] *= k; if (coff[y][x] < 0.01) coff[y][x] = 0; }
   }
   uiT += dt;
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const q = parts[i]; q.life += dt;
-    if (q.life >= q.max) { parts.splice(i, 1); continue; }
-    q.x += q.vx * dt / 1000; q.y += q.vy * dt / 1000; q.vy += 14 * dt / 1000;
+  if (state !== 'paused') {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const q = parts[i]; q.life += dt;
+      if (q.life >= q.max) { parts.splice(i, 1); continue; }
+      q.x += q.vx * dt / 1000; q.y += q.vy * dt / 1000; q.vy += 14 * dt / 1000;
+    }
+    for (let i = pops.length - 1; i >= 0; i--) {
+      pops[i].t += dt;
+      if (pops[i].t >= pops[i].dur) pops.splice(i, 1);
+    }
   }
   if (state === 'clearing') { clearT += dt; if (clearT >= clearDur) finishClear(); return; }
   if (state === 'blasting') { blastT += dt; if (blastT >= BLAST_MS) finishBlast(); return; }
@@ -481,14 +522,50 @@ function drawCell(c, px, py, s, color, alpha = 1, white = 0) {
 }
 
 const FONT = {
-  B:['11110','10001','10001','11110','10001','10001','11110'],
-  L:['10000','10000','10000','10000','10000','10000','11111'],
   A:['01110','10001','10001','11111','10001','10001','10001'],
+  B:['11110','10001','10001','11110','10001','10001','11110'],
+  C:['01111','10000','10000','10000','10000','10000','01111'],
+  D:['11110','10001','10001','10001','10001','10001','11110'],
+  E:['11111','10000','10000','11110','10000','10000','11111'],
+  G:['01110','10001','10000','10111','10001','10001','01111'],
+  L:['10000','10000','10000','10000','10000','10000','11111'],
+  M:['10001','11011','10101','10101','10001','10001','10001'],
+  N:['10001','11001','10101','10011','10001','10001','10001'],
+  O:['01110','10001','10001','10001','10001','10001','01110'],
+  R:['11110','10001','10001','11110','10100','10010','10001'],
   S:['01111','10000','10000','01110','00001','00001','11110'],
   T:['11111','00100','00100','00100','00100','00100','00100'],
-  E:['11111','10000','10000','11110','10000','10000','11111'],
-  R:['11110','10001','10001','11110','10100','10010','10001']
+  V:['10001','10001','10001','10001','10001','01010','00100'],
+  X:['10001','10001','01010','00100','01010','10001','10001'],
+  '0':['01110','10001','10011','10101','11001','10001','01110'],
+  '1':['00100','01100','00100','00100','00100','00100','01110'],
+  '2':['01110','10001','00001','00010','00100','01000','11111'],
+  '3':['11110','00001','00001','01110','00001','00001','11110'],
+  '4':['00010','00110','01010','10010','11111','00010','00010'],
+  '5':['11111','10000','11110','00001','00001','10001','01110'],
+  '6':['00110','01000','10000','11110','10001','10001','01110'],
+  '7':['11111','00001','00010','00100','01000','01000','01000'],
+  '8':['01110','10001','10001','01110','10001','10001','01110'],
+  '9':['01110','10001','10001','01111','00001','00010','01100'],
+  '+':['00000','00100','00100','11111','00100','00100','00000']
 };
+// texto de arcade desenhado a pixéis, centrado em (cx, cy)
+function pixText(c, text, cx, cy, px, color, shadow) {
+  const w = (text.length * 6 - 1) * px;
+  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - 3.5 * px);
+  for (const pass of [0, 1]) {
+    let x = x0;
+    for (const ch of text) {
+      const gl = FONT[ch];
+      if (gl) for (let r = 0; r < 7; r++) for (let q = 0; q < 5; q++) {
+        if (gl[r][q] !== '1') continue;
+        if (pass === 0) { c.fillStyle = shadow; c.fillRect(x + q * px + px * 0.6, y0 + r * px + px * 0.6, px, px); }
+        else { c.fillStyle = color; c.fillRect(x + q * px, y0 + r * px, px, px); }
+      }
+      x += 6 * px;
+    }
+  }
+}
 function drawBlock(c, px, py, s, color, special) {
   if (!special) { drawCell(c, px, py, s, color); return; }
   const pulse = 0.2 + 0.35 * (0.5 + 0.5 * Math.sin(uiT / 85));
@@ -578,20 +655,34 @@ function render() {
   // aviso "BLASTER" intermitente, em letras de arcade desenhadas a pixéis
   if (state === 'play' && cur && cur.special && alertT < ALERT_MS && Math.floor(alertT / 150) % 2 === 0) {
     const px = Math.max(2, Math.floor(W * 0.92 / 41));
-    const x0 = Math.floor((W - 41 * px) / 2), y0 = Math.floor(cell * 5);
-    const col = Math.floor(alertT / 300) % 2 === 0 ? '#ffe14d' : '#ff5a5a';
-    for (const pass of [0, 1]) {
-      let cx = x0;
-      for (const ch of 'BLASTER') {
-        const gl = FONT[ch];
-        for (let r = 0; r < 7; r++) for (let c = 0; c < 5; c++) {
-          if (gl[r][c] !== '1') continue;
-          if (pass === 0) { ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(cx + c * px + px * 0.6, y0 + r * px + px * 0.6, px, px); }
-          else { ctx.fillStyle = col; ctx.fillRect(cx + c * px, y0 + r * px, px, px); }
-        }
-        cx += 6 * px;
-      }
+    pixText(ctx, 'BLASTER', W / 2, cell * 5 + 3.5 * px, px,
+            Math.floor(alertT / 300) % 2 === 0 ? '#ffe14d' : '#ff5a5a', 'rgba(0,0,0,0.85)');
+  }
+
+  // pontos a saltar e classificações (GOOD / EXCELLENT / MASTER)
+  for (const p of pops) {
+    const t = p.t / p.dur;
+    ctx.globalAlpha = clamp(t < 0.7 ? 1 : (1 - t) / 0.3, 0, 1);
+    if (p.kind === 'score') {
+      const hop = Math.abs(Math.sin(t * Math.PI * 2)) * (1 - t);
+      const pop = 1 + 0.5 * Math.max(0, 1 - t * 5);
+      const px = Math.max(2, cell * 0.11 * pop);
+      pixText(ctx, p.text, p.cx * cell, p.cy * cell - hop * cell * 2.4, px, '#ffffff', 'rgba(0,0,0,0.85)');
+    } else {
+      const units = p.text.length * 6 - 1;
+      const base = Math.min(Math.floor(W * 0.9 / units), Math.floor(cell * 0.32));
+      const pop = 1 + 0.4 * Math.max(0, 1 - t * 6);
+      const on = t < 0.55 || Math.floor(p.t / 90) % 2 === 0;
+      const cols = p.text === 'GOOD' ? ['#5ee684'] : p.text === 'EXCELLENT' ? ['#ffd84f', '#ffffff'] : ['#ff6f6f', '#b975ff', '#4fd6ff'];
+      if (on) pixText(ctx, p.text, W / 2, p.cy * cell, Math.max(2, base * pop), cols[Math.floor(p.t / 120) % cols.length], 'rgba(0,0,0,0.85)');
     }
+  }
+  ctx.globalAlpha = 1;
+
+  // GAME OVER intermitente, no meio do ecrã
+  if (state === 'over' && Math.floor(uiT / 300) % 2 === 0) {
+    const px = Math.max(2, Math.floor(W * 0.92 / 53));
+    pixText(ctx, 'GAME OVER', W / 2, H / 2, px, Math.floor(uiT / 600) % 2 === 0 ? '#ffe14d' : '#ff5a5a', 'rgba(0,0,0,0.85)');
   }
 
   // próxima peça
